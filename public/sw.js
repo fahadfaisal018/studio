@@ -1,9 +1,13 @@
 const CACHE_NAME = 'braingig-v1';
 const urlsToCache = [
     '/',
+    '/login',
+    '/dashboard',
     '/manifest.json',
+    '/favicon.ico',
     '/icons/icon-192x192.png',
-    '/icons/icon-512x512.png'
+    '/icons/icon-512x512.png',
+    '/icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', event => {

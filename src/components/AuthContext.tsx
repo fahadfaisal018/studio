@@ -30,8 +30,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setLoading(false);
 
             // Protected routes logic
-            if (!user && pathname !== '/' && !pathname.startsWith('/login')) {
-                router.push('/');
+            if (!user && pathname !== '/login') {
+                router.push('/login');
             }
         });
 
@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const logout = async () => {
         await signOut(auth);
-        router.push('/');
+        router.push('/login');
     };
 
     return (

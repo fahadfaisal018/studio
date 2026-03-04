@@ -2,19 +2,27 @@
   "name": "Braingig Expenses",
   "short_name": "Braingig",
   "description": "Splitwise for Modern Agencies. Track client payments, costs, and partner profit shares.",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#F1F1F6",
   "theme_color": "#3B3BDA",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png"
     }
   ]
