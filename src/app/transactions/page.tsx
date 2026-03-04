@@ -12,22 +12,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { getAgency, getTransactions, addTransaction, deleteTransaction } from '@/lib/mock-db';
 import { Transaction, Agency, TransactionType } from '@/lib/types';
-import { Plus, Trash2, Filter, Receipt } from 'lucide-react';
+import { Plus, Trash2, Filter, Receipt, Globe } from 'lucide-react';
+import { getUSDToBDTRate, convertToUSD } from '@/lib/fx';
 
 export default function TransactionsPage() {
   const [data, setData] = useState<{ agency: Agency; transactions: Transaction[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [fxRate, setFxRate] = useState(120);
   const [newTx, setNewTx] = useState<Partial<Transaction>>({
     type: 'income',
+    currency: 'USD',
     date: new Date().toISOString().split('T')[0],
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [agency, transactions] = await Promise.all([getAgency(), getTransactions()]);
+      const [agency, transactions, rate] = await Promise.all([
+        getAgency(),
+        getTransactions(),
+        getUSDToBDTRate()
+      ]);
       setData({ agency, transactions });
+      setFxRate(rate);
     } catch (error) {
       console.error('Error loading transactions:', error);
     } finally {
@@ -42,9 +50,15 @@ export default function TransactionsPage() {
   const handleAddTransaction = async () => {
     if (!data || !newTx.amount || !newTx.handledBy || !newTx.description) return;
 
+    const currency = (newTx.currency || 'USD') as 'USD' | 'BDT';
+    const amount = Number(newTx.amount);
+    const amountUSD = convertToUSD(amount, currency, fxRate);
+
     const tx: Omit<Transaction, 'id'> = {
       type: newTx.type as TransactionType,
-      amount: Number(newTx.amount),
+      currency,
+      amount,
+      amountUSD,
       date: newTx.date || new Date().toISOString().split('T')[0],
       description: newTx.description,
       project: newTx.project || '',
@@ -56,7 +70,7 @@ export default function TransactionsPage() {
       await addTransaction(tx);
       await loadData();
       setIsOpen(false);
-      setNewTx({ type: 'income', date: new Date().toISOString().split('T')[0] });
+      setNewTx({ type: 'income', currency: 'USD', date: new Date().toISOString().split('T')[0] });
     } catch (error) {
       console.error('Error adding transaction:', error);
     }
@@ -109,12 +123,37 @@ export default function TransactionsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select onValueChange={(v) => setNewTx({ ...newTx, currency: v as 'USD' | 'BDT' })} defaultValue="USD">
+                      <SelectTrigger>
+                        <SelectValue placeholder="USD" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD ($)</SelectItem>
+                        <SelectItem value="BDT">BDT (৳)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
                     <Label>Amount</Label>
-                    <Input
-                      type="number"
-                      placeholder="0.00"
-                      onChange={(e) => setNewTx({ ...newTx, amount: Number(e.target.value) })}
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        {newTx.currency === 'BDT' ? '৳' : '$'}
+                      </span>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        className="pl-8"
+                        onChange={(e) => setNewTx({ ...newTx, amount: Number(e.target.value) })}
+                      />
+                    </div>
+                    {newTx.currency === 'BDT' && newTx.amount && (
+                      <p className="text-xs text-muted-foreground">
+                        ≈ ${convertToUSD(Number(newTx.amount), 'BDT', fxRate).toFixed(2)} USD (Rate: {fxRate})
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -196,7 +235,14 @@ export default function TransactionsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-bold">
-                        ${tx.amount.toLocaleString()}
+                        <div className="flex flex-col items-end">
+                          <span>{tx.currency === 'USD' ? '$' : '৳'}{tx.amount.toLocaleString()}</span>
+                          {tx.currency === 'BDT' && (
+                            <span className="text-[10px] font-normal text-muted-foreground">
+                              ${tx.amountUSD.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="icon" onClick={() => handleDelete(tx.id)}>

@@ -11,21 +11,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getAgency, getSettlements, addSettlement, deleteSettlement } from '@/lib/mock-db';
 import { Settlement, Agency } from '@/lib/types';
-import { Plus, Trash2, HandCoins, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, HandCoins, ArrowRight, Globe } from 'lucide-react';
+import { getUSDToBDTRate, convertToUSD } from '@/lib/fx';
 
 export default function SettlementsPage() {
   const [data, setData] = useState<{ agency: Agency; settlements: Settlement[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [fxRate, setFxRate] = useState(120);
   const [newSet, setNewSet] = useState<Partial<Settlement>>({
+    currency: 'USD',
     date: new Date().toISOString().split('T')[0],
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [agency, settlements] = await Promise.all([getAgency(), getSettlements()]);
+      const [agency, settlements, rate] = await Promise.all([
+        getAgency(),
+        getSettlements(),
+        getUSDToBDTRate()
+      ]);
       setData({ agency, settlements });
+      setFxRate(rate);
     } catch (error) {
       console.error('Error loading settlements:', error);
     } finally {
@@ -40,10 +48,16 @@ export default function SettlementsPage() {
   const handleAddSettlement = async () => {
     if (!data || !newSet.amount || !newSet.fromPartnerId || !newSet.toPartnerId) return;
 
+    const currency = (newSet.currency || 'USD') as 'USD' | 'BDT';
+    const amount = Number(newSet.amount);
+    const amountUSD = convertToUSD(amount, currency, fxRate);
+
     const settlement: Omit<Settlement, 'id'> = {
       fromPartnerId: newSet.fromPartnerId,
       toPartnerId: newSet.toPartnerId,
-      amount: Number(newSet.amount),
+      currency,
+      amount,
+      amountUSD,
       date: newSet.date || new Date().toISOString().split('T')[0],
       note: newSet.note || '',
     };
@@ -52,7 +66,7 @@ export default function SettlementsPage() {
       await addSettlement(settlement);
       await loadData();
       setIsOpen(false);
-      setNewSet({ date: new Date().toISOString().split('T')[0] });
+      setNewSet({ currency: 'USD', date: new Date().toISOString().split('T')[0] });
     } catch (error) {
       console.error('Error adding settlement:', error);
     }
@@ -119,13 +133,33 @@ export default function SettlementsPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Amount</Label>
-                  <Input
-                    type="number"
-                    placeholder="0.00"
-                    onChange={(e) => setNewSet({ ...newSet, amount: Number(e.target.value) })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select onValueChange={(v) => setNewSet({ ...newSet, currency: v as 'USD' | 'BDT' })} defaultValue="USD">
+                      <SelectTrigger>
+                        <SelectValue placeholder="USD" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD ($)</SelectItem>
+                        <SelectItem value="BDT">BDT (৳)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Amount</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        {newSet.currency === 'BDT' ? '৳' : '$'}
+                      </span>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        className="pl-8"
+                        onChange={(e) => setNewSet({ ...newSet, amount: Number(e.target.value) })}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Date</Label>
@@ -134,6 +168,11 @@ export default function SettlementsPage() {
                     value={newSet.date}
                     onChange={(e) => setNewSet({ ...newSet, date: e.target.value })}
                   />
+                  {newSet.currency === 'BDT' && newSet.amount && (
+                    <p className="text-xs text-muted-foreground">
+                      ≈ ${convertToUSD(Number(newSet.amount), 'BDT', fxRate).toFixed(2)} USD (Rate: {fxRate})
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Note (Optional)</Label>
@@ -181,7 +220,14 @@ export default function SettlementsPage() {
                         {data.agency.partners.find(p => p.id === s.toPartnerId)?.name}
                       </TableCell>
                       <TableCell className="text-right font-bold text-primary">
-                        ${s.amount.toLocaleString()}
+                        <div className="flex flex-col items-end">
+                          <span>{s.currency === 'USD' ? '$' : '৳'}{s.amount.toLocaleString()}</span>
+                          {s.currency === 'BDT' && (
+                            <span className="text-[10px] font-normal text-muted-foreground">
+                              ${s.amountUSD.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>

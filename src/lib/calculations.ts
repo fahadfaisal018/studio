@@ -8,24 +8,24 @@ export function calculateBalances(
 ): PartnerBalance[] {
   const totalIncome = transactions
     .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + t.amountUSD, 0);
   const totalExpense = transactions
     .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + t.amountUSD, 0);
   const totalProfit = totalIncome - totalExpense;
 
   const results: PartnerBalance[] = partners.map((partner) => {
     const shouldReceive = totalProfit * (partner.sharePercentage / 100);
-    
+
     const partnerIncome = transactions
       .filter((t) => t.type === 'income' && t.handledBy === partner.id)
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + t.amountUSD, 0);
     const partnerExpense = transactions
       .filter((t) => t.type === 'expense' && t.handledBy === partner.id)
-      .reduce((sum, t) => sum + t.amount, 0);
-    
+      .reduce((sum, t) => sum + t.amountUSD, 0);
+
     const handledNet = partnerIncome - partnerExpense;
-    
+
     // Initial balance before settlements
     let balance = handledNet - shouldReceive;
 
@@ -33,10 +33,10 @@ export function calculateBalances(
     // If partner pays another partner, their held "extra" decreases
     const paidOut = settlements
       .filter((s) => s.fromPartnerId === partner.id)
-      .reduce((sum, s) => sum + s.amount, 0);
+      .reduce((sum, s) => sum + s.amountUSD, 0);
     const received = settlements
       .filter((s) => s.toPartnerId === partner.id)
-      .reduce((sum, s) => sum + s.amount, 0);
+      .reduce((sum, s) => sum + s.amountUSD, 0);
 
     balance = balance - paidOut + received;
 
@@ -56,7 +56,7 @@ export function simplifySettlements(balances: PartnerBalance[]): SettlementSugge
   // Creditors are those with balance > 0 (they hold extra money, they OWE the pool)
   // Debtors are those with balance < 0 (they are owed money)
   // In our context: Transfers are from those who have "extra" (balance > 0) to those who are "short" (balance < 0)
-  
+
   const creditors = balances
     .filter((b) => b.balance > 0.01)
     .map((b) => ({ id: b.partnerId, amount: b.balance }))
@@ -68,13 +68,13 @@ export function simplifySettlements(balances: PartnerBalance[]): SettlementSugge
     .sort((a, b) => b.amount - a.amount);
 
   const suggestions: SettlementSuggestion[] = [];
-  
+
   let i = 0;
   let j = 0;
 
   while (i < creditors.length && j < debtors.length) {
     const payAmount = Math.min(creditors[i].amount, debtors[j].amount);
-    
+
     if (payAmount > 0.01) {
       suggestions.push({
         from: creditors[i].id,

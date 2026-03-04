@@ -17,7 +17,9 @@ export interface Agency {
 export interface Transaction {
   id: string;
   type: TransactionType;
+  currency: 'USD' | 'BDT';
   amount: number;
+  amountUSD: number;
   date: string;
   description: string;
   category?: string;
@@ -29,7 +31,9 @@ export interface Settlement {
   id: string;
   fromPartnerId: string;
   toPartnerId: string;
+  currency: 'USD' | 'BDT';
   amount: number;
+  amountUSD: number;
   date: string;
   note?: string;
 }

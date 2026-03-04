@@ -9,9 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { calculateBalances, simplifySettlements } from '@/lib/calculations';
 import { Agency, Transaction, Settlement, PartnerBalance, SettlementSuggestion } from '@/lib/types';
-import { ArrowUpRight, ArrowDownRight, Wallet, Plus, TrendingUp } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { ArrowUpRight, ArrowDownRight, Wallet, Plus, TrendingUp, Globe, Coins } from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
 import { getAgency, getTransactions, getSettlements } from '@/lib/mock-db';
+import { getUSDToBDTRate, convertToBDT } from '@/lib/fx';
 
 export default function DashboardPage() {
   const [data, setData] = useState<{
@@ -22,13 +23,15 @@ export default function DashboardPage() {
 
   const [balances, setBalances] = useState<PartnerBalance[]>([]);
   const [suggestions, setSuggestions] = useState<SettlementSuggestion[]>([]);
+  const [fxRate, setFxRate] = useState(120);
+  const [showInBDT, setShowInBDT] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       console.log('Dashboard: Starting data load...');
       try {
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Firebase timeout')), 10000)
         );
 
@@ -36,13 +39,16 @@ export default function DashboardPage() {
           getAgency(),
           getTransactions(),
           getSettlements(),
+          getUSDToBDTRate()
         ]);
 
-        console.log('Dashboard: Fetching from Firestore...');
-        const [agency, transactions, settlements] = await Promise.race([
+        console.log('Dashboard: Fetching data...');
+        const [agency, transactions, settlements, rate] = await Promise.race([
           fetchDataPromise,
           timeoutPromise
-        ]) as [Agency, Transaction[], Settlement[]];
+        ]) as [Agency, Transaction[], Settlement[], number];
+
+        setFxRate(rate);
 
         console.log('Dashboard: Data received', { agency, transactionsCount: transactions.length });
 
@@ -69,11 +75,16 @@ export default function DashboardPage() {
 
   const totalIncome = data.transactions
     .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + t.amountUSD, 0);
   const totalExpense = data.transactions
     .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + t.amountUSD, 0);
   const totalProfit = totalIncome - totalExpense;
+
+  const displayVal = (usd: number) => {
+    if (showInBDT) return `৳${(usd * fxRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  };
 
   const getPartnerName = (id: string) =>
     data.agency.partners.find((p) => p.id === id)?.name || 'Unknown';
@@ -82,8 +93,19 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background">
       <Navigation />
       <div className="flex flex-col md:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-card px-4 md:px-8">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-card px-4 md:px-8">
           <h1 className="text-xl font-bold">Dashboard</h1>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("gap-2 text-xs", showInBDT && "bg-primary text-primary-foreground hover:bg-primary/90")}
+              onClick={() => setShowInBDT(!showInBDT)}
+            >
+              <Coins size={14} />
+              {showInBDT ? 'Show in USD' : 'Show in BDT'}
+            </Button>
+          </div>
         </header>
 
         <main className="flex-1 space-y-8 p-4 md:p-8 pb-24 md:pb-8">
@@ -95,7 +117,7 @@ export default function DashboardPage() {
                 <ArrowUpRight className="h-4 w-4 text-emerald-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">${totalIncome.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{displayVal(totalIncome)}</div>
                 <p className="text-xs text-muted-foreground">Collected by partners</p>
               </CardContent>
             </Card>
@@ -105,17 +127,17 @@ export default function DashboardPage() {
                 <ArrowDownRight className="h-4 w-4 text-rose-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">${totalExpense.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{displayVal(totalExpense)}</div>
                 <p className="text-xs text-muted-foreground">Paid by partners</p>
               </CardContent>
             </Card>
-            <Card className="bg-primary text-primary-foreground">
+            <Card className="bg-primary text-primary-foreground sm:col-span-2 lg:col-span-1">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-primary-foreground/80">Net Profit</CardTitle>
                 <TrendingUp className="h-4 w-4" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">${totalProfit.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{displayVal(totalProfit)}</div>
                 <p className="text-xs text-primary-foreground/60">Distributed by share %</p>
               </CardContent>
             </Card>
@@ -142,13 +164,13 @@ export default function DashboardPage() {
                     {balances.map((b) => (
                       <TableRow key={b.partnerId}>
                         <TableCell className="font-medium">{b.name}</TableCell>
-                        <TableCell>${b.shouldReceive.toLocaleString()}</TableCell>
-                        <TableCell>${b.handledNet.toLocaleString()}</TableCell>
+                        <TableCell>{displayVal(b.shouldReceive)}</TableCell>
+                        <TableCell>{displayVal(b.handledNet)}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant={b.balance > 0 ? 'destructive' : 'secondary'}>
+                          <Badge variant={b.balance > 0 ? 'destructive' : 'secondary'} className="whitespace-nowrap">
                             {b.balance > 0
-                              ? `Pay Out $${b.balance.toLocaleString()}`
-                              : `Collect $${Math.abs(b.balance).toLocaleString()}`}
+                              ? `Pay ${displayVal(b.balance)}`
+                              : `Owed ${displayVal(Math.abs(b.balance))}`}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -178,9 +200,9 @@ export default function DashboardPage() {
                           <span className="text-xs font-medium text-muted-foreground uppercase">From</span>
                           <span className="font-bold">{getPartnerName(s.from)}</span>
                         </div>
-                        <div className="flex flex-col items-center px-4">
-                          <span className="text-lg font-bold text-primary">${s.amount.toLocaleString()}</span>
-                          <div className="h-px w-8 bg-border" />
+                        <div className="flex flex-col items-center px-2">
+                          <span className="text-sm font-bold text-primary">{displayVal(s.amount)}</span>
+                          <div className="h-px w-6 bg-border" />
                         </div>
                         <div className="flex flex-col text-right">
                           <span className="text-xs font-medium text-muted-foreground uppercase">To</span>
