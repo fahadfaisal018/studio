@@ -9,47 +9,69 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getDB, saveDB } from '@/lib/mock-db';
+import { getAgency, getSettlements, addSettlement, deleteSettlement } from '@/lib/mock-db';
 import { Settlement, Agency } from '@/lib/types';
 import { Plus, Trash2, HandCoins, ArrowRight } from 'lucide-react';
 
 export default function SettlementsPage() {
   const [data, setData] = useState<{ agency: Agency; settlements: Settlement[] } | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [newSet, setNewSet] = useState<Partial<Settlement>>({
     date: new Date().toISOString().split('T')[0],
   });
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [agency, settlements] = await Promise.all([getAgency(), getSettlements()]);
+      setData({ agency, settlements });
+    } catch (error) {
+      console.error('Error loading settlements:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setData(getDB());
+    loadData();
   }, []);
 
-  const handleAddSettlement = () => {
+  const handleAddSettlement = async () => {
     if (!data || !newSet.amount || !newSet.fromPartnerId || !newSet.toPartnerId) return;
 
-    const settlement: Settlement = {
-      id: Math.random().toString(36).substr(2, 9),
+    const settlement: Omit<Settlement, 'id'> = {
       fromPartnerId: newSet.fromPartnerId,
       toPartnerId: newSet.toPartnerId,
       amount: Number(newSet.amount),
       date: newSet.date || new Date().toISOString().split('T')[0],
-      note: newSet.note,
+      note: newSet.note || '',
     };
 
-    const updated = { ...data, settlements: [settlement, ...data.settlements] };
-    setData(updated);
-    saveDB(updated);
-    setIsOpen(false);
-    setNewSet({ date: new Date().toISOString().split('T')[0] });
+    try {
+      await addSettlement(settlement);
+      await loadData();
+      setIsOpen(false);
+      setNewSet({ date: new Date().toISOString().split('T')[0] });
+    } catch (error) {
+      console.error('Error adding settlement:', error);
+    }
   };
 
-  const deleteSettlement = (id: string) => {
-    if (!data) return;
-    const updated = { ...data, settlements: data.settlements.filter((s) => s.id !== id) };
-    setData(updated);
-    saveDB(updated);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteSettlement(id);
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting settlement:', error);
+    }
   };
 
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+  );
   if (!data) return null;
 
   return (
@@ -99,16 +121,16 @@ export default function SettlementsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount</Label>
-                  <Input 
-                    type="number" 
-                    placeholder="0.00" 
+                  <Input
+                    type="number"
+                    placeholder="0.00"
                     onChange={(e) => setNewSet({ ...newSet, amount: Number(e.target.value) })}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input 
-                    type="date" 
+                  <Input
+                    type="date"
                     value={newSet.date}
                     onChange={(e) => setNewSet({ ...newSet, date: e.target.value })}
                   />
@@ -162,7 +184,7 @@ export default function SettlementsPage() {
                         ${s.amount.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => deleteSettlement(s.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
                           <Trash2 size={16} className="text-muted-foreground hover:text-destructive" />
                         </Button>
                       </TableCell>

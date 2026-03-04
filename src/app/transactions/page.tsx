@@ -10,50 +10,72 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { getDB, saveDB } from '@/lib/mock-db';
+import { getAgency, getTransactions, addTransaction, deleteTransaction } from '@/lib/mock-db';
 import { Transaction, Agency, TransactionType } from '@/lib/types';
 import { Plus, Trash2, Filter, Receipt } from 'lucide-react';
 
 export default function TransactionsPage() {
   const [data, setData] = useState<{ agency: Agency; transactions: Transaction[] } | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [newTx, setNewTx] = useState<Partial<Transaction>>({
     type: 'income',
     date: new Date().toISOString().split('T')[0],
   });
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [agency, transactions] = await Promise.all([getAgency(), getTransactions()]);
+      setData({ agency, transactions });
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setData(getDB());
+    loadData();
   }, []);
 
-  const handleAddTransaction = () => {
+  const handleAddTransaction = async () => {
     if (!data || !newTx.amount || !newTx.handledBy || !newTx.description) return;
 
-    const tx: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
+    const tx: Omit<Transaction, 'id'> = {
       type: newTx.type as TransactionType,
       amount: Number(newTx.amount),
       date: newTx.date || new Date().toISOString().split('T')[0],
       description: newTx.description,
-      project: newTx.project,
-      category: newTx.category,
+      project: newTx.project || '',
+      category: newTx.category || '',
       handledBy: newTx.handledBy,
     };
 
-    const updated = { ...data, transactions: [tx, ...data.transactions] };
-    setData(updated);
-    saveDB(updated);
-    setIsOpen(false);
-    setNewTx({ type: 'income', date: new Date().toISOString().split('T')[0] });
+    try {
+      await addTransaction(tx);
+      await loadData();
+      setIsOpen(false);
+      setNewTx({ type: 'income', date: new Date().toISOString().split('T')[0] });
+    } catch (error) {
+      console.error('Error adding transaction:', error);
+    }
   };
 
-  const deleteTransaction = (id: string) => {
-    if (!data) return;
-    const updated = { ...data, transactions: data.transactions.filter((t) => t.id !== id) };
-    setData(updated);
-    saveDB(updated);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTransaction(id);
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+    }
   };
 
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+  );
   if (!data) return null;
 
   return (
@@ -88,17 +110,17 @@ export default function TransactionsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Amount</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="0.00" 
+                    <Input
+                      type="number"
+                      placeholder="0.00"
                       onChange={(e) => setNewTx({ ...newTx, amount: Number(e.target.value) })}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Description</Label>
-                  <Input 
-                    placeholder="e.g. Website payment" 
+                  <Input
+                    placeholder="e.g. Website payment"
                     onChange={(e) => setNewTx({ ...newTx, description: e.target.value })}
                   />
                 </div>
@@ -122,8 +144,8 @@ export default function TransactionsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Date</Label>
-                    <Input 
-                      type="date" 
+                    <Input
+                      type="date"
                       value={newTx.date}
                       onChange={(e) => setNewTx({ ...newTx, date: e.target.value })}
                     />
@@ -177,7 +199,7 @@ export default function TransactionsPage() {
                         ${tx.amount.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => deleteTransaction(tx.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(tx.id)}>
                           <Trash2 size={16} className="text-muted-foreground hover:text-destructive" />
                         </Button>
                       </TableCell>

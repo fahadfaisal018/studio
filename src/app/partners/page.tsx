@@ -7,50 +7,83 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { getDB, saveDB } from '@/lib/mock-db';
+import { getAgency, updateAgency } from '@/lib/mock-db';
 import { Agency, Partner } from '@/lib/types';
 import { Plus, Trash2, Mail, Percent, User, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function PartnersPage() {
-  const [data, setData] = useState<any | null>(null);
+  const [data, setData] = useState<{ agency: Agency } | null>(null);
+  const [loading, setLoading] = useState(true);
   const [newPartner, setNewPartner] = useState({ name: '', email: '', sharePercentage: 0 });
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const agency = await getAgency();
+      setData({ agency });
+    } catch (error) {
+      console.error('Error loading partners:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setData(getDB());
+    loadData();
   }, []);
 
   const totalShare = data?.agency.partners.reduce((sum: number, p: Partner) => sum + p.sharePercentage, 0) || 0;
 
-  const handleUpdateShare = (id: string, share: number) => {
+  const handleUpdateShare = async (id: string, share: number) => {
     if (!data) return;
-    const updatedPartners = data.agency.partners.map((p: Partner) => 
+    const updatedPartners = data.agency.partners.map((p: Partner) =>
       p.id === id ? { ...p, sharePercentage: share } : p
     );
-    const updated = { ...data, agency: { ...data.agency, partners: updatedPartners } };
-    setData(updated);
-    saveDB(updated);
+    const updatedAgency = { ...data.agency, partners: updatedPartners };
+    try {
+      await updateAgency(updatedAgency);
+      await loadData();
+    } catch (error) {
+      console.error('Error updating share:', error);
+    }
   };
 
-  const handleAddPartner = () => {
+  const handleAddPartner = async () => {
     if (!data || !newPartner.name || !newPartner.email) return;
     const partner: Partner = {
       id: Math.random().toString(36).substr(2, 9),
       ...newPartner
     };
-    const updated = { ...data, agency: { ...data.agency, partners: [...data.agency.partners, partner] } };
-    setData(updated);
-    saveDB(updated);
-    setNewPartner({ name: '', email: '', sharePercentage: 0 });
+    const updatedAgency = { ...data.agency, partners: [...data.agency.partners, partner] };
+    try {
+      await updateAgency(updatedAgency);
+      await loadData();
+      setNewPartner({ name: '', email: '', sharePercentage: 0 });
+    } catch (error) {
+      console.error('Error adding partner:', error);
+    }
   };
 
-  const deletePartner = (id: string) => {
+  const deletePartner = async (id: string) => {
     if (!data) return;
-    const updated = { ...data, agency: { ...data.agency, partners: data.agency.partners.filter((p: Partner) => p.id !== id) } };
-    setData(updated);
-    saveDB(updated);
+    const updatedAgency = {
+      ...data.agency,
+      partners: data.agency.partners.filter((p: Partner) => p.id !== id)
+    };
+    try {
+      await updateAgency(updatedAgency);
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting partner:', error);
+    }
   };
 
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+  );
   if (!data) return null;
 
   return (
@@ -92,8 +125,8 @@ export default function PartnersPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="relative w-20">
-                        <Input 
-                          type="number" 
+                        <Input
+                          type="number"
                           value={p.sharePercentage}
                           className="pr-6"
                           onChange={(e) => handleUpdateShare(p.id, Number(e.target.value))}
@@ -117,23 +150,23 @@ export default function PartnersPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Full Name</Label>
-                  <Input 
-                    placeholder="John Doe" 
+                  <Input
+                    placeholder="John Doe"
                     value={newPartner.name}
                     onChange={(e) => setNewPartner({ ...newPartner, name: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Email Address</Label>
-                  <Input 
-                    placeholder="john@example.com" 
+                  <Input
+                    placeholder="john@example.com"
                     value={newPartner.email}
                     onChange={(e) => setNewPartner({ ...newPartner, email: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Initial Profit Share (%)</Label>
-                  <Input 
+                  <Input
                     type="number"
                     value={newPartner.sharePercentage}
                     onChange={(e) => setNewPartner({ ...newPartner, sharePercentage: Number(e.target.value) })}

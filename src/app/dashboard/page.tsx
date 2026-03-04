@@ -7,11 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getDB, saveDB } from '@/lib/mock-db';
 import { calculateBalances, simplifySettlements } from '@/lib/calculations';
 import { Agency, Transaction, Settlement, PartnerBalance, SettlementSuggestion } from '@/lib/types';
 import { ArrowUpRight, ArrowDownRight, Wallet, Plus, TrendingUp } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { getAgency, getTransactions, getSettlements } from '@/lib/mock-db';
 
 export default function DashboardPage() {
   const [data, setData] = useState<{
@@ -22,15 +22,49 @@ export default function DashboardPage() {
 
   const [balances, setBalances] = useState<PartnerBalance[]>([]);
   const [suggestions, setSuggestions] = useState<SettlementSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const db = getDB();
-    setData(db);
-    const calculated = calculateBalances(db.agency.partners, db.transactions, db.settlements);
-    setBalances(calculated);
-    setSuggestions(simplifySettlements(calculated));
+    async function loadData() {
+      console.log('Dashboard: Starting data load...');
+      try {
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Firebase timeout')), 10000)
+        );
+
+        const fetchDataPromise = Promise.all([
+          getAgency(),
+          getTransactions(),
+          getSettlements(),
+        ]);
+
+        console.log('Dashboard: Fetching from Firestore...');
+        const [agency, transactions, settlements] = await Promise.race([
+          fetchDataPromise,
+          timeoutPromise
+        ]) as [Agency, Transaction[], Settlement[]];
+
+        console.log('Dashboard: Data received', { agency, transactionsCount: transactions.length });
+
+        const dbData = { agency, transactions, settlements };
+        setData(dbData);
+        const calculated = calculateBalances(agency.partners, transactions, settlements);
+        setBalances(calculated);
+        setSuggestions(simplifySettlements(calculated));
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
   }, []);
 
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+  );
   if (!data) return null;
 
   const totalIncome = data.transactions
@@ -41,7 +75,7 @@ export default function DashboardPage() {
     .reduce((sum, t) => sum + t.amount, 0);
   const totalProfit = totalIncome - totalExpense;
 
-  const getPartnerName = (id: string) => 
+  const getPartnerName = (id: string) =>
     data.agency.partners.find((p) => p.id === id)?.name || 'Unknown';
 
   return (
@@ -112,8 +146,8 @@ export default function DashboardPage() {
                         <TableCell>${b.handledNet.toLocaleString()}</TableCell>
                         <TableCell className="text-right">
                           <Badge variant={b.balance > 0 ? 'destructive' : 'secondary'}>
-                            {b.balance > 0 
-                              ? `Pay Out $${b.balance.toLocaleString()}` 
+                            {b.balance > 0
+                              ? `Pay Out $${b.balance.toLocaleString()}`
                               : `Collect $${Math.abs(b.balance).toLocaleString()}`}
                           </Badge>
                         </TableCell>
